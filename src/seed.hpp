@@ -14,6 +14,7 @@
 #include <cstdio>
 
 namespace qmc_decoder {
+
 class seed {
  public:
   seed() {
@@ -28,6 +29,7 @@ class seed {
   }
 
   ~seed() = default;
+
   uint8_t next_mask() {
     uint8_t ret;
     index++;
@@ -56,5 +58,7 @@ class seed {
   int index{-1};
   std::array<std::array<uint8_t, 7>, 8> seedMap;
 };
+
 }  // namespace qmc_decoder
+
 #endif  // SEED_H
