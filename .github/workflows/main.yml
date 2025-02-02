@@ -33,7 +33,7 @@ jobs:
         cmake --build . --config Release
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v3  # Updated to v3
+      uses: actions/upload-artifact@v4  # Updated to v4
       with:
         name: build-output
         path: ./Release/*.exe
