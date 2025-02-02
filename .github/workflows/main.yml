@@ -3,12 +3,12 @@ name: Build Project
 on:
   push:
     branches:
-      - main  
+      - main
   pull_request:
     branches:
       - main
   workflow_dispatch:  # 允许手动触发工作流
-  
+
 jobs:
   build:
     runs-on: windows-latest
@@ -24,8 +24,14 @@ jobs:
 
     - name: Install dependencies
       run: |
+        # 添加 Visual Studio 包源
+        choco source add -n=visualstudio https://aka.ms/vs/17/release/channel
+        
+        # 安装 cmake
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-        choco install visualstudio2019-buildtools
+        
+        # 安装 Visual Studio 2019 构建工具，使用手动指定的源
+        choco install visualstudio2019-buildtools --source=visualstudio
 
     - name: Build the project with MSBuild
       run: |
@@ -33,7 +39,7 @@ jobs:
         cmake --build . --config Release
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4  # Updated to v4
+      uses: actions/upload-artifact@v4
       with:
         name: build-output
         path: ./Release/*.exe
