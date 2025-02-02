@@ -24,14 +24,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        # 添加 Visual Studio 包源
-        choco source add -n=visualstudio https://aka.ms/vs/17/release/channel
-        
-        # 安装 cmake
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-        
-        # 安装 Visual Studio 2019 构建工具，使用手动指定的源
-        choco install visualstudio2019-buildtools --source=visualstudio
+        choco install visualstudio2022-buildtools  # 更换为 Visual Studio 2022 构建工具
 
     - name: Build the project with MSBuild
       run: |
