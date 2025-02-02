@@ -23,7 +23,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' 
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
         choco install visualstudio2019-buildtools
 
     - name: Build the project with MSBuild
@@ -32,7 +32,7 @@ jobs:
         cmake --build . --config Release
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3  # Updated to v3
       with:
         name: build-output
         path: ./Release/*.exe
