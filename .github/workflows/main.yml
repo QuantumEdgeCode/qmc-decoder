@@ -1,0 +1,38 @@
+name: Build Project
+
+on:
+  push:
+    branches:
+      - main  
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Visual Studio Build Tools
+      uses: microsoft/setup-msbuild@v1.1
+      with:
+        vs-version: 'latest'
+
+    - name: Install dependencies
+      run: |
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' 
+        choco install visualstudio2019-buildtools
+
+    - name: Build the project with MSBuild
+      run: |
+        cmake -G "Visual Studio 16 2019" .
+        cmake --build . --config Release
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: build-output
+        path: ./Release/*.exe
