@@ -28,7 +28,7 @@ jobs:
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
 
         # 安装 Visual Studio 2019 构建工具，使用 Chocolatey 官方源
-        choco install visualstudio2019-build-tools --source=https://community.chocolatey.org/api/v2/
+        choco install visualstudio2022-build-tools --source=https://community.chocolatey.org/api/v2/
 
     - name: Build the project with MSBuild
       run: |
