@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -212,6 +213,35 @@ void sub_process(fs::path dir) {
   }
   /* 文件指针在 outfile 析构时自动关闭（RAII） */
 }
+
+/**
+ * @brief 打印帮助信息（-h / --help）
+ *
+ * 内容为纯 ASCII 与中文混排，输出编码依赖 main() 已把控制台切到 UTF-8。
+ */
+void print_help() {
+  printf(
+      "qmc-decoder — QQ 音乐 QMC 加密音频解码器\n"
+      "\n"
+      "用法:\n"
+      "  qmc-decoder                 扫描当前目录（含子目录）并解码全部 QMC 文件\n"
+      "  qmc-decoder <文件路径>       解码指定的单个文件\n"
+      "  qmc-decoder -h | --help     显示本帮助\n"
+      "\n"
+      "支持的格式:\n"
+      "  .qmc3 / .qmc0   ->  .mp3\n"
+      "  .qmcflac        ->  .flac\n"
+      "  .qmcogg         ->  .ogg\n"
+      "\n"
+      "示例:\n"
+      "  qmc-decoder\n"
+      "  qmc-decoder \"D:\\Music\\song.qmcflac\"\n"
+      "\n"
+      "说明:\n"
+      "  输出文件与源文件同目录、同名，仅替换扩展名；源文件保留不删除。\n"
+      "  已存在的输出文件会被直接覆盖。\n"
+      "  退出码: 0 正常 / 1 用法错误 / -1 目录不可写或参数解析失败。\n");
+}
 }  // namespace
 
 /**
@@ -249,6 +279,16 @@ int main(int argc, char** argv) {
         "用法：将本程序放入 QMC 文件所在目录后直接运行，"
         "或通过命令行指定文件路径：qmc-decoder /PATH/TO/SONG\n");
     return 1;
+  }
+
+  /*
+   * 帮助参数：-h / --help
+   * 两者均为纯 ASCII，直接比较 argv[1] 即可，不受 Windows ACP 编码影响。
+   */
+  if (argc == 2 && (std::strcmp(argv[1], "-h") == 0 ||
+                    std::strcmp(argv[1], "--help") == 0)) {
+    print_help();
+    return 0;
   }
 
   /* 模式一：无参数 — 自动扫描当前目录 */
