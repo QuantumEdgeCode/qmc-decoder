@@ -2,92 +2,148 @@ name: Build Binary
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # ---------------------------------------------------------------- Linux ----
   linux:
-    name: Build on Linux
-    runs-on: ubuntu-latest
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       name: Clone Repository
-      with: 
-        submodules: recursive
-      
-    - name: Preparation
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install cmake -y
-        mkdir build
-        
-    - name: Make
-      working-directory: ./build
-      run: |
-        cmake ..
-        make
-    
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
       with:
-        name: linux
-        path: ./build/qmc-decoder
-  
+        submodules: recursive
+
+    - name: Make
+      run: |
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --parallel
+
+    - name: Package
+      run: |
+        test -x build/qmc-decoder || { echo "qmc-decoder 未生成"; exit 1; }
+        file build/qmc-decoder
+        strip build/qmc-decoder
+        tar -czf qmc-decoder-linux-${{ matrix.arch }}.tar.gz -C build qmc-decoder
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux_${{ matrix.arch }}
+        path: qmc-decoder-linux-${{ matrix.arch }}.tar.gz
+        if-no-files-found: error
+
+  # -------------------------------------------------------------- Windows ----
   windows:
-    name: Build on Windows
+    name: Windows ${{ matrix.arch }}
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
-        arch: ["x86","x64"]
-    
+        include:
+          # 全部走 amd64 主机工具链，行为一致
+          - arch: x86
+            msvc_arch: amd64_x86
+            pe_machine: "0x014C"
+          - arch: x64
+            msvc_arch: amd64
+            pe_machine: "0x8664"
+          - arch: arm64
+            msvc_arch: amd64_arm64
+            pe_machine: "0xAA64"
+
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       name: Clone Repository
-      with: 
+      with:
         submodules: recursive
-      
+
     - name: Preparation
       uses: ilammy/msvc-dev-cmd@v1
       with:
-        arch: ${{ matrix.arch }}
+        arch: ${{ matrix.msvc_arch }}
 
     - name: Make
+      shell: pwsh
       run: |
-        mkdir build
-        cd build
-        cmake -G "NMake Makefiles" .. -DCMAKE_BUILD_TYPE=Release
-        nmake
-    
+        cmake -S . -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+        cmake --build build
+
+    - name: Verify Target Architecture
+      shell: pwsh
+      run: |
+        $exe = "build/qmc-decoder.exe"
+        if (-not (Test-Path $exe)) { throw "构建产物不存在：$exe" }
+        # 读取 PE 头的 Machine 字段，确认产物架构与矩阵一致
+        $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $exe))
+        $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+        $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+        $expect = [Convert]::ToUInt16("${{ matrix.pe_machine }}", 16)
+        "PE Machine = 0x{0:X4} / expected 0x{1:X4}" -f $machine, $expect
+        if ($machine -ne $expect) { throw "产物架构与预期不符（${{ matrix.arch }}）" }
+
     - name: Upload Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: windows_${{ matrix.arch }}
-        path: ./build/qmc-decoder.exe
+        path: build/qmc-decoder.exe
+        if-no-files-found: error
 
+  # ----------------------------------------------------------------- macOS ---
+  # macos-latest 为 Apple Silicon（arm64）主机；一次编译产出 universal2，
+  # 同时兼容 M 系列与 Intel。
   macos:
-    name: Build on MacOS
+    name: macOS universal (arm64 + x86_64)
     runs-on: macos-latest
-    
+
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       name: Clone Repository
-      with: 
+      with:
         submodules: recursive
 
-    - name: Preparation
-      run: |
-        mkdir build
-
     - name: Make
-      working-directory: ./build
       run: |
-        cmake ..
-        make
-  
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+        cmake --build build --parallel
+
+    - name: Verify Architectures
+      run: |
+        test -f build/qmc-decoder || { echo "qmc-decoder 未生成"; exit 1; }
+        lipo -archs build/qmc-decoder
+        lipo -archs build/qmc-decoder | grep -q arm64  || { echo "缺少 arm64 切片"; exit 1; }
+        lipo -archs build/qmc-decoder | grep -q x86_64 || { echo "缺少 x86_64 切片"; exit 1; }
+
+    - name: Package
+      run: |
+        # universal 二进制不做 strip，避免 fat 文件处理差异
+        tar -czf qmc-decoder-macos-universal.tar.gz -C build qmc-decoder
+
     - name: Upload Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
-        name: macos
-        path: ./build/qmc-decoder
+        name: macos_universal
+        path: qmc-decoder-macos-universal.tar.gz
+        if-no-files-found: error
