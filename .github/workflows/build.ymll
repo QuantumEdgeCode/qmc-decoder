@@ -1,11 +1,17 @@
-name: Build Binary
+name: Build Project
 
 on:
   push:
     branches: [ master, main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ master, main ]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: '构建完成后发布到 Releases'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -102,11 +108,17 @@ jobs:
         "PE Machine = 0x{0:X4} / expected 0x{1:X4}" -f $machine, $expect
         if ($machine -ne $expect) { throw "产物架构与预期不符（${{ matrix.arch }}）" }
 
+    - name: Package
+      shell: pwsh
+      run: |
+        # 带上架构后缀，避免 Release 里三个 exe 同名互相覆盖
+        Copy-Item "build/qmc-decoder.exe" "qmc-decoder-windows-${{ matrix.arch }}.exe"
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: windows_${{ matrix.arch }}
-        path: build/qmc-decoder.exe
+        path: qmc-decoder-windows-${{ matrix.arch }}.exe
         if-no-files-found: error
 
   # ----------------------------------------------------------------- macOS ---
@@ -147,3 +159,39 @@ jobs:
         name: macos_universal
         path: qmc-decoder-macos-universal.tar.gz
         if-no-files-found: error
+
+  # --------------------------------------------------------------- Release ---
+  # tag（v*）推送时自动发版；手动触发时可勾选 publish_release 立即发一版。
+  release:
+    name: Publish Release
+    needs: [ linux, windows, macos ]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist
+        merge-multiple: true
+
+    - name: List Artifacts
+      run: ls -l dist
+
+    - name: Create Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          TAG="${{ github.ref_name }}"
+        else
+          TAG="build-${{ github.run_number }}"
+        fi
+        echo "发布版本：$TAG"
+        gh release create "$TAG" dist/* \
+          --title "$TAG" \
+          --notes "自动构建产物（提交 ${GITHUB_SHA:0:7}）" \
+          --latest
