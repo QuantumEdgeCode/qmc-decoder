@@ -1,50 +1,47 @@
-cmake_minimum_required(VERSION 3.10)  # 更新到更高版本
+# QMC Decoder — CMake 构建配置文件
+# 支持的构建目标：
+#   Windows : MSVC x86 / x64 / ARM64（ARM64 可在 x64 主机交叉编译，也可原生编译）
+#   Linux   : x64 / arm64（GCC/Clang，静态链接）
+#   macOS   : arm64 / x86_64 / universal2（Apple Silicon 与 Intel 通吃）
+cmake_minimum_required(VERSION 3.15)
 project(qmc-decoder)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 设置 C++ 标准为 C++17
+# 统一使用 C++17：三平台标准库均提供 std::filesystem，
+# 不再强依赖 ghc::filesystem（该子模块仅作为 C++11/14 环境下的回退保留）。
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# MSVC 特定设置
+# 编译器选项
 if (MSVC)
-  # 启用优化
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2")
-  # 可以根据需要在这里添加更多的 MSVC 特定设置
-else()
-  # 对于非 MSVC 系统（例如 Linux 和其他平台）
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -pipe -std=c++11")
+  # 静态 CRT：exe 不依赖 VC++ Redistributable，下载即用
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  # /utf-8          源码为无 BOM 的 UTF-8，避免 MSVC 按本地代码页（936/1252）
+  #                 解析中文注释与字面量时触发 C4819，甚至 C2001（字符串字面量跨行）
+  # /Zc:__cplusplus 让 __cplusplus 正确报告 201703L，从而启用 std::filesystem 分支
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /utf-8 /Zc:__cplusplus")
+else(MSVC)
+  # Unix/Linux/macOS: GCC/Clang
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -pipe")
 endif()
 
-# 针对不同操作系统的设置
-if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-  # 静态链接和其他 Linux 特定的设置
+# Linux 下静态链接，产物可直接分发到同架构机器运行
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static -pthread -static-libgcc -static-libstdc++")
-elseif (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-  # 这里可以添加 Windows 特定的编译选项（如果需要的话）
-  # 例如，您可以设置对 Windows 特性的特定支持
 endif()
 
-# 3rdparty 目录中的外部依赖
-include_directories(3rdparty/filesystem/include)
+# ghc::filesystem 回退头文件路径（C++17 下不会用到；子模块未初始化时自动跳过）
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/filesystem/include/ghc/filesystem.hpp")
+  include_directories(3rdparty/filesystem/include)
+endif()
 
-# 查找源文件并添加
 aux_source_directory(src SRC)
-
-# 创建可执行文件
 add_executable(qmc-decoder ${SRC})
 
-# 如果有安装需求，执行安装操作
-install(TARGETS qmc-decoder DESTINATION bin)
-
-# 针对 Windows 特定的设置，您可以在这里添加更多库或链接设置
+# Windows 额外依赖：CommandLineToArgvW 位于 shell32.lib
 if (MSVC)
-  # MSVC 可能需要一些特定的库链接
-  # target_link_libraries(qmc-decoder <libs>)
+  target_link_libraries(qmc-decoder shell32.lib)
 endif()
 
-# 在 Linux 上，您可能需要链接到一些特定的库（例如 pthread）
-if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-  target_link_libraries(qmc-decoder pthread)
-endif()
+install(TARGETS qmc-decoder DESTINATION bin)
